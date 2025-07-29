@@ -1,5 +1,5 @@
 # ---------- Base stage ----------
-FROM node:18-bullseye-slim AS base
+FROM node:20-bullseye-slim AS base
 
 # Instala dumb-init para gestionar correctamente las señales
 RUN apt-get update \
@@ -13,11 +13,11 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instala solo dependencias de producción
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 
 # ---------- Build stage ----------
-FROM node:18-bullseye-slim AS build
+FROM node:20-bullseye-slim AS build
 
 WORKDIR /app
 
