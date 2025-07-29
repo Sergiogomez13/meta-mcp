@@ -1,65 +1,66 @@
-# Use Node.js 18+ as specified in package.json engines
-FROM node:18-alpine AS base
+# ---------- Base stage ----------
+FROM node:18-bullseye-slim AS base
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Instala dumb-init para gestionar correctamente las señales
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends dumb-init \
+  && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
+# Crea directorio de trabajo
 WORKDIR /app
 
-# Copy package files
+# Copia package.json + package-lock.json / pnpm-lock / yarn.lock
 COPY package*.json ./
 
-# Install dependencies
+# Instala solo dependencias de producción
 RUN npm ci --only=production && npm cache clean --force
 
-# Development stage for building
-FROM node:18-alpine AS build
+
+# ---------- Build stage ----------
+FROM node:18-bullseye-slim AS build
 
 WORKDIR /app
 
-# Copy package files
+# Copia manifest y tsconfig
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install all dependencies (including dev dependencies for building)
+# Instala TODAS las dependencias (incluidas dev) para compilar
 RUN npm ci
 
-# Copy source code
+# Copia el código fuente
 COPY src/ ./src/
 
-# Build the TypeScript code
+# Compila TypeScript → build/
 RUN npm run build
 
-# Production stage
+
+# ---------- Production stage ----------
 FROM base AS production
 
-# Copy built application from build stage
+# Copia el resultado de la compilación
 COPY --from=build /app/build ./build
 
-# Copy any other necessary files (like docs if needed at runtime)
+# Copia docs (solo si las necesitas en tiempo de ejecución)
 COPY docs/ ./docs/
 
-# Create a non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-# Change ownership of the app directory to nodejs user
-RUN chown -R nodejs:nodejs /app
+# Crea usuario no root
+RUN groupadd -g 1001 nodejs \
+  && useradd -u 1001 -g nodejs -s /bin/sh -m nodejs \
+  && chown -R nodejs:nodejs /app
 USER nodejs
 
-# Expose port (though MCP typically uses stdio, this could be useful for health checks)
+# Puerto opcional (útil para health-checks)
 EXPOSE 3000
 
-# Set environment variables
 ENV NODE_ENV=production
 
-# Health check (optional - checks if the process is running)
+# Healthcheck sencillo (opcional)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node build/index.js --version || exit 1
 
-# Use dumb-init to handle signals properly
+# Usa dumb-init como init system
 ENTRYPOINT ["dumb-init", "--"]
 
-# Default command to run the MCP server
+# Comando por defecto
 CMD ["node", "build/index.js"]
