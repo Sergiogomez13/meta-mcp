@@ -1,64 +1,31 @@
-# ---------- Base stage ----------
-FROM node:20-bullseye-slim AS base
-
-# Instala dumb-init para gestionar correctamente las señales
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends dumb-init \
-  && rm -rf /var/lib/apt/lists/*
-
-# Crea directorio de trabajo
-WORKDIR /app
-
-# Copia package.json + package-lock.json / pnpm-lock / yarn.lock
-COPY package*.json ./
-
-# Instala solo dependencias de producción
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
-
-
 # ---------- Build stage ----------
 FROM node:20-bullseye-slim AS build
 
 WORKDIR /app
 
-# Copia manifest y tsconfig
-COPY package*.json ./
-COPY tsconfig.json ./
+# Copiamos TODO el proyecto de una vez,
+# de modo que el script `prepare` (si se ejecuta) ya vea /src
+COPY . .
 
-# Instala TODAS las dependencias (incluidas dev) para compilar
-RUN npm ci
-
-# Copia el código fuente
-COPY src/ ./src/
-
-# Compila TypeScript → build/
-RUN npm run build
+# Instalamos dependencias y compilamos TypeScript
+RUN npm ci && npm run build
 
 
 # ---------- Production stage ----------
-FROM base AS production
+FROM node:20-bullseye-slim AS production
 
-# Copia el resultado de la compilación
+WORKDIR /app
+
+# Copiamos solo lo imprescindible para producción
 COPY --from=build /app/build ./build
+COPY package*.json ./
 
+# Instalamos dependencias de runtime, sin scripts ni dev-deps
+ENV NPM_CONFIG_IGNORE_SCRIPTS=true
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-# Crea usuario no root
-RUN groupadd -g 1001 nodejs \
-  && useradd -u 1001 -g nodejs -s /bin/sh -m nodejs \
-  && chown -R nodejs:nodejs /app
-USER nodejs
-
-# Puerto opcional (útil para health-checks)
+# Puerto opcional (útil si haces health-checks HTTP)
 EXPOSE 3000
 
-ENV NODE_ENV=production
-
-# Healthcheck sencillo (opcional)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node build/index.js --version || exit 1
-
-# Usa dumb-init como init system
-ENTRYPOINT ["dumb-init", "--"]
-
-# Comando por defecto
 CMD ["node", "build/index.js"]
+
