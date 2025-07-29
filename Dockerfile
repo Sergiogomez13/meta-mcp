@@ -41,8 +41,6 @@ FROM base AS production
 # Copia el resultado de la compilación
 COPY --from=build /app/build ./build
 
-# Copia docs (solo si las necesitas en tiempo de ejecución)
-COPY docs/ ./docs/
 
 # Crea usuario no root
 RUN groupadd -g 1001 nodejs \
