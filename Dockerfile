@@ -16,16 +16,16 @@ FROM node:20-bullseye-slim AS production
 
 WORKDIR /app
 
-# Copiamos solo lo imprescindible para producción
-COPY --from=build /app/build ./build
-COPY package*.json ./
+# Copiamos TODO lo construido (código JS + node_modules)
+COPY --from=build /app /app
 
-# Instalamos dependencias de runtime, sin scripts ni dev-deps
+# Instalamos dependencias de runtime (sin scripts ni dev-deps)
 ENV NPM_CONFIG_IGNORE_SCRIPTS=true
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-# Puerto opcional (útil si haces health-checks HTTP)
 EXPOSE 3000
+CMD ["node", "index.js"]
+
 
 CMD ["node", "build/index.js"]
 
